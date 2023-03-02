@@ -119,7 +119,6 @@ def parse_json(question, text):
     try:
         return json.loads(extract_json_block(text))
     except:
-        print(text)
         questionary.confirm(
             "Hmmm, I can't think of a good name, can I think again?").ask()
         return think_script_name(question, text)
@@ -190,16 +189,16 @@ def after_comment(question, comment):
     code = codedisplay.extract_code_block(comment)
 
     if code is None:
-        click.echo(click.style("AI assistant's thougt:",
+        click.echo(click.style("AI Answer:",
                                bold=True, underline=True, reverse=True))
         click.echo(display_comment)
         click.echo(click.style("Sorry, I could not generate the proper code from your comment.",
                                fg="red", bold=True))
-        sys.exit(1)
+        what_wanna_do(question)
 
-    click.echo_via_pager(display_comment)
-    click.echo(click.style("AI assistant's thougt:",
-                           bold=True, underline=True, reverse=True))
+    # click.echo_via_pager(display_comment)
+    click.echo(click.style("AI Answer:",
+                           bold=True, reverse=True))
     click.echo(display_comment)
 
     next_action = call_whats_next()
@@ -277,10 +276,15 @@ def think(question=None):
 
 
 @cmd.command()
-@click.option('--command-only', '-c')
-def list(command_only):
+@click.option('--command', is_flag=True)
+def list(command):
     """list up all commands"""
-    print(command_only)
+
+    for key in sorted(config):
+        if command:
+            click.echo(key)
+        else:
+            click.echo(f"{key} ~ {config[key]['question']}")
 
 
 def main():
