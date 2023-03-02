@@ -1,4 +1,7 @@
 
+import csv
+import subprocess
+import tempfile
 import toml
 import json
 from enum import Enum
@@ -18,7 +21,7 @@ openai.api_key = os.environ["OPENAI_API_KEY"]
 
 BASH_SCRIPT_PROMPT = """
 If someone asks you to perform a task, your job is to come up with a series of bash scripts that will perform that task.
-Do not use anything but bash scripts.
+Do not use anything but bash scripts.Take up to two arguments if necessary.
 Use the following format and try to explain your reasoning step by step:.
 
 Q: "Copy files in a directory named "target" to a new directory at the same level as target named "myNewDirectory"."
@@ -67,6 +70,19 @@ if not os.path.exists(toml_file_name):
 config = read_toml_file(toml_file_name)
 
 
+def extract_arguments(code):
+    matches = re.findall(r"\$[0-9]+", code)
+    return matches
+
+
+def require_args_if_need(code):
+    args = extract_arguments(code)
+    if len(args) > 0:
+        args_string = questionary.text(f"Please input arguments:").ask()
+        return split_by_whitespace(args_string)
+    return []
+
+
 def add_to_config(name, code, question):
     config[name] = {"question": question, "code": code}
     write_toml_file(toml_file_name, config)
@@ -76,8 +92,9 @@ def talk_to_openai(messages):
     response = openai.ChatCompletion.create(
         model="gpt-3.5-turbo",
         messages=messages,
-        temperature=0.5,
+        temperature=0.1,
     )
+
     return response["choices"][0]["message"]["content"]
 
 
@@ -119,11 +136,26 @@ def think_script_name(question, context):
     return parse_json(question, json_list)
 
 
+def execute_bash(filename, args=[]):
+    subprocess.run(["bash", filename] + args)
+
+
+def create_tmp_file(code):
+    with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
+        tmp_file.write(code.encode("utf-8"))
+        return tmp_file.name
+
+
 class NextAction(Enum):
     DO = "Do"
     SAVE = "Save"
     ANOTHER_QUESTION = "Another Question"
     EXIT = "Exit"
+
+
+def split_by_whitespace(string):
+    regex = re.compile(r'\s+')
+    return regex.split(string)
 
 
 def call_whats_next():
@@ -156,16 +188,25 @@ def try_save(question, comment, code):
 def after_comment(question, comment):
     display_comment = codedisplay.highlight_code_block(comment)
     code = codedisplay.extract_code_block(comment)
-    click.echo("")
+
+    if code is None:
+        click.echo(click.style("AI assistant's thougt:",
+                               bold=True, underline=True, reverse=True))
+        click.echo(display_comment)
+        click.echo(click.style("Sorry, I could not generate the proper code from your comment.",
+                               fg="red", bold=True))
+        sys.exit(1)
+
+    click.echo_via_pager(display_comment)
     click.echo(click.style("AI assistant's thougt:",
-               bold=True, underline=True, reverse=True))
-    click.echo("\n")
+                           bold=True, underline=True, reverse=True))
     click.echo(display_comment)
-    click.echo("\n")
 
     next_action = call_whats_next()
     if next_action == NextAction.DO:
-        os.system(code)
+        tmp = create_tmp_file(code)
+        args = require_args_if_need(code)
+        execute_bash(tmp, args)
         if questionary.confirm("save this script?").ask():
             try_save(question, comment, code)
     elif next_action == NextAction.SAVE:
@@ -176,38 +217,59 @@ def after_comment(question, comment):
         sys.exit(0)
 
 
-def what_wanna_do(default_question="Recursively explore all .py files under the current directory and sum their line counts."):
+"""Recursively explore all .py files under the current directory and sum their line counts."""
+
+
+def what_wanna_do(default_question=""):
     # 　やりたいことを聞く
     question = questionary.text(
         'What do you want to do ?', default=default_question).ask()
-    #  bash script と解説を取得する。
+
+    if len(question.strip()) == 0:
+        click.echo("please tell me what you wanna do", err=True)
+        sys.exit(0)
     comment = guess_bash_command(question)
     after_comment(question, comment)
 
 
 @click.group()
 def cmd():
+    """Shell command launcher with natural language"""
     pass
+
+
+def fill_command(command):
+    if command is not None and command in config:
+        return command
+    ideas = [
+        f"{key} ~ {config[key]['question']}" for key in sorted(config)]
+    command_and_question = questionary.autocomplete(
+        'Choose command',
+        choices=ideas).ask()
+    return command_and_question.split("~")[0].strip()
+
+
+def fill_args(cmd, args):
+    if len(args) > 0:
+        return args
+    return require_args_if_need(config[cmd]["code"])
 
 
 @cmd.command()
 @click.argument('command', required=False)
-def do(command=None):
-    if command is not None:
-        os.system(config[command]["code"])
-    else:
-        ideas = [
-            f"{key} ~ {config[key]['question']}" for key in sorted(config)]
-        command_and_question = questionary.autocomplete(
-            'Choose command',
-            choices=ideas).ask()
-        got_command = command_and_question.split("~")[0].strip()
-        os.system(config[got_command]["code"])
+@click.argument("args", nargs=-1)
+def do(command=None, args=None):
+    """Execute a command"""
+    cmd = fill_command(command)
+    filled_args = fill_args(cmd, [a for a in args])
+
+    execute_bash(os.path.join(wanna_dir, cmd), filled_args)
 
 
 @cmd.command()
 @click.argument('question', required=False)
 def think(question=None):
+    """Generate a bash script that answers the incoming request"""
     if (question is None):
         what_wanna_do()
     else:
@@ -217,6 +279,7 @@ def think(question=None):
 @cmd.command()
 @click.option('--command-only', '-c')
 def list(command_only):
+    """list up all commands"""
     print(command_only)
 
 
