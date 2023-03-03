@@ -37,14 +37,17 @@ def talk_to_openai(messages):
         temperature=0.1,
     )
     return glom(response, "choices.0.message.content", default=None)
-    # return response["choices"][0]["message"]["content"]
 
 
-def guess_bash_command(question):
-    return talk_to_openai([
+def guess_bash_command(question, error_message=None):
+    messages = [
         {"role": "system", "content": BASH_SCRIPT_PROMPT},
         {"role": "user", "content": question}
-    ])
+    ]
+    if error_message:
+        messages.append({"role": "system", "content": "When I ran the bash script, I got the following error message：\n"+error_message})
+
+    return talk_to_openai(messages)
 
 
 def extract_json_block(text):
