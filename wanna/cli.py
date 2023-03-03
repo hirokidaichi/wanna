@@ -107,9 +107,6 @@ def after_comment(question, comment):
         sys.exit(0)
 
 
-"""Recursively explore all .py files under the current directory and sum their line counts."""
-
-
 def what_wanna_do(default_question=""):
     # 　やりたいことを聞く
     question = questionary.text(
@@ -135,7 +132,11 @@ def fill_command(command):
     command_and_question = questionary.autocomplete(
         'Choose command',
         choices=ideas).ask()
-    return command_and_question.split("~")[0].strip()
+    got_command = command_and_question.split(":")[0].strip()
+    if config.exists(got_command):
+        return got_command
+    else:
+        fill_command(got_command)
 
 
 def fill_args(cmd, args):

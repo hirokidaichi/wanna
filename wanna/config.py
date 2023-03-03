@@ -46,7 +46,7 @@ def save_script(name, code, question):
 
 def ideas():
     return [
-        f"{key} ~ {config[key]['question']}" for key in sorted(config)
+        f"{key:<20}:{config[key]['question']}" for key in sorted(config)
     ]
 
 
