@@ -50,7 +50,8 @@ find . -name "*.py" | xargs wc -l | awk '{total += $1} END{print total}'
 ```zsh
 $ wanna do
 ```
-{ここに画面キャプチャ}
+![wanna-do](https://user-images.githubusercontent.com/95184/222663648-50325d6a-1e5e-451a-a90e-9aff6a914fc1.gif)
+
 
 ```
 $ wanna do random_passwords
@@ -66,11 +67,12 @@ top_memory_usage    :メモリ使用量の多いプロセスを上位10個出力
 random_passwords    :ランダムに10個のパスワードを生成する
 ```
 
-これを用いるとたとえば、こんなことができます。
+これを用いると、たとえば、こんなことができます。
 ```
-$ wanna list | peco | wanna do
+$ wanna list | peco | xargs wanna do
 ```
-[個々にもキャプチャ]
+![wanna-list-peco](https://user-images.githubusercontent.com/95184/222663840-67983f47-b477-4168-81db-6abae9caf311.gif)
+
 
 ## インストール
 インストールは、pipを用いて簡単にできます。python3.10以上の環境で動作します。
