@@ -16,6 +16,7 @@ questionary = "^1.10.0"
 openai = "^0.27.0"
 pygments = "^2.14.0"
 toml = "^0.10.2"
+glom = "^23.1.1"
 
 
 [build-system]
