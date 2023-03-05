@@ -51,7 +51,7 @@ def create_tmp_file(code):
 class NextAction(Enum):
     DO = "Do"
     SAVE = "Save"
-    ADD_PROMPT = "追加の指示を出す"
+    ADDITONAL_REQUEST = "Additonal Request"
     ANOTHER_QUESTION = "Another Question"
     EXIT = "Exit"
 
@@ -69,41 +69,52 @@ def call_whats_next():
     return NextAction(na)
 
 
-def try_save(question, comment, code):
-    retry_think_script_name = retry_if_fail(chatter.think_script_name)
-    name_cands = retry_think_script_name(question, comment)
+def try_save(agent):
+    retry_think_script_name = retry_if_fail(lambda: agent.think_script_names())
+
+    names = retry_think_script_name()
     selected_name = questionary.select(
         "I thought of the following names. Which one do you like?",
-        choices=name_cands,
+        choices=names,
     ).ask()
-    config.save_script(selected_name, code, question)
+    config.save_script(selected_name, agent.code, agent.question_summary())
 
 
-def after_comment(question, comment):
-    display_comment = codedisplay.highlight_code_block(comment)
-    code = codedisplay.extract_code_block(comment)
+def conversation_cycle(agent, is_display_comment=True):
+    display_comment = agent.display_comment
+    code = agent.code
 
-    if code is None:
-        click.echo(click.style("AI Answer:",
-                               bold=True, underline=True, reverse=True))
+    if is_display_comment:
+        if code is None:
+            click.echo(click.style("AI Answer:",
+                                   bold=True, underline=True, reverse=True))
+            click.echo(display_comment)
+            click.echo(click.style("Sorry, I could not generate the proper code from your comment.",
+                                   fg="red", bold=True))
+            sys.exit(0)
+
+        click.echo(click.style("AI Answer:", bold=True, reverse=True))
         click.echo(display_comment)
-        click.echo(click.style("Sorry, I could not generate the proper code from your comment.",
-                               fg="red", bold=True))
-
-    click.echo(click.style("AI Answer:", bold=True, reverse=True))
-    click.echo(display_comment)
 
     next_action = call_whats_next()
+
     if next_action == NextAction.DO:
         tmp = create_tmp_file(code)
         args = require_args_if_need(code)
         execute_bash(tmp, args)
-        if questionary.confirm("save this script?").ask():
-            try_save(question, comment, code)
+        return conversation_cycle(agent, is_display_comment=False)
+
     elif next_action == NextAction.SAVE:
-        try_save(question, comment, code)
+        return try_save(agent)
+
+    elif next_action == NextAction.ADDITONAL_REQUEST:
+        text = questionary.text("What additional requests do you have?").ask()
+        agent.think_script(text)
+        return conversation_cycle(agent)
+
     elif next_action == NextAction.ANOTHER_QUESTION:
-        what_wanna_do(question)
+        return what_wanna_do(agent.question_summary())
+
     elif next_action == NextAction.EXIT:
         sys.exit(0)
 
@@ -115,8 +126,10 @@ def what_wanna_do(default_question=""):
     if len(question.strip()) == 0:
         click.echo("please tell me what you wanna do", err=True)
         sys.exit(0)
-    comment = chatter.guess_bash_command(question)
-    after_comment(question, comment)
+    agent = chatter.BashAgent()
+    agent.think_script(question)
+
+    conversation_cycle(agent)
 
 
 @click.group()
@@ -176,6 +189,16 @@ def list(command):
 
     for value in target_list:
         click.echo(value)
+
+
+@cmd.command()
+@click.argument('command', required=False)
+@click.argument("args", nargs=-1)
+def remove(command, args):
+    """Remove selected command"""
+    print(command)
+    cmd = fill_command(command)
+    config.remove(cmd)
 
 
 def main():

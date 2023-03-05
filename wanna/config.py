@@ -34,6 +34,12 @@ def add_to_config(name, code, question):
     write_toml_file(toml_file_name, config)
 
 
+def remove(name):
+    del config[name]
+    write_toml_file(toml_file_name, config)
+    os.remove(os.path.join(wanna_dir, name))
+
+
 def save_script(name, code, question):
     # configにもデータを保存する
     add_to_config(name, code, question)

@@ -2,8 +2,14 @@ import os
 import openai
 import json
 import re
+import sys
 from glom import glom
 from . import system
+from . import codedisplay
+if "OPENAI_API_KEY" not in os.environ:
+    print("ERROR: OPENAI_API_KEY environment variable not found.")
+    sys.exit(1)
+
 openai.api_key = os.environ["OPENAI_API_KEY"]
 
 
@@ -27,30 +33,14 @@ cp -r target/* myNewDirectory
 
 LIST_UP_FILENAMES_PROMPT = """
 If you were to name this bashscript, what file name would you give it?
-Please follow the example without the .sh and answer with a list of four choices in json format. (ex.["aba", "bbb", "ccc", "ddd"])
+Be sure to output 4 candidates
+Please follow the example without the .sh and answer with a list of four choices in json format. (ex.["ccc", "bbb", "ccc", "ddd"])
 """
 
-
-def talk_to_openai(messages):
-    response = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",
-        messages=messages,
-        temperature=0.1,
-    )
-    return glom(response, "choices.0.message.content", default=None)
-
-
-def guess_bash_command(question, error_message=None):
-    messages = [
-        {"role": "system", "content": BASH_SCRIPT_PROMPT},
-        {"role": "system", "content": "The operating environment for bash is as follows:"+system.info()},
-        {"role": "user", "content": question}
-    ]
-    if error_message:
-        messages.append(
-            {"role": "system", "content": "When I ran the bash script, I got the following error message：\n"+error_message})
-
-    return talk_to_openai(messages)
+SUMMARY_PROMPT = """
+Please write a description of this bash script in 100 length of string or less in the same language of the questioner.
+The subject line "This bash script is ~" is not necessary. Please write only a simple description.
+"""
 
 
 def extract_json_block(text):
@@ -63,16 +53,66 @@ def extract_json_block(text):
         return text
 
 
-def parse_json(question, text):
+def parse_json(text):
     return json.loads(extract_json_block(text))
 
 
-def think_script_name(question, context):
-    json_list = talk_to_openai([
+class BashAgent():
+    PRESET_MESSAGES = [
         {"role": "system", "content": BASH_SCRIPT_PROMPT},
-        {"role": "user", "content": question},
-        {"role": "assistant", "content": context},
-        {"role": "user", "content": LIST_UP_FILENAMES_PROMPT},
-    ])
+        {"role": "system", "content": "The operating environment for bash is as follows:"+system.info()},
+    ]
 
-    return parse_json(question, json_list)
+    def __init__(self, temperature=0.1):
+        self.temperature = temperature
+        self.messages = self.PRESET_MESSAGES
+        self.display_comment = ""
+        self.question = []
+        self.names = []
+        self.code = ""
+
+    def add_user_message(self, message):
+        self.messages.append({"role": "user", "content": message})
+
+    def add_system_message(self, message):
+        self.messages.append({"role": "system", "content": message})
+
+    def add_assistant_message(self, message):
+        self.messages.append({"role": "assistant", "content": message})
+
+    def chat(self):
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=self.messages,
+            temperature=self.temperature,
+        )
+        message = glom(response, "choices.0.message.content", default=None)
+        self.add_assistant_message(message)
+        return message
+
+    def think_script(self, question):
+        self.question.append(question)
+        self.add_user_message(question)
+        message = self.chat()
+        self.display_comment = codedisplay.highlight_code_block(message)
+        self.code = codedisplay.extract_code_block(message)
+        return message
+
+    def think_script_names(self):
+        self.add_system_message(LIST_UP_FILENAMES_PROMPT)
+        message = self.chat()
+        self.names = parse_json(message)
+        return self.names
+
+    def question_summary(self):
+        if len(self.question) == 0:
+            return ""
+        if len(self.question) == 1:
+            return self.question[0]
+
+        self.add_system_message(SUMMARY_PROMPT)
+        message = self.chat()
+        return message
+
+    def reset(self):
+        self.messages = self.PRESET_MESSAGES
