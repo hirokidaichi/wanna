@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "wanna"
-version = "0.1.4"
+version = "0.1.5"
 description = "Shell command launcher with natural language"
 license = "MIT"
 readme = "README.md"

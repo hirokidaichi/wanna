@@ -154,9 +154,7 @@ def fill_command(command):
         sys.exit(0)
 
 
-def fill_args(cmd, args):
-    if len(args) > 0:
-        return args
+def fill_args(cmd):
     return require_args_if_need(config.get_code(cmd))
 
 
@@ -166,8 +164,8 @@ def fill_args(cmd, args):
 def do(command=None, args=None):
     """Execute a command"""
     cmd = fill_command(command)
-    args = args if args is not None else []
-    filled_args = fill_args(cmd, [a for a in args])
+    args = [a for a in args] if args is not None else []
+    filled_args = args if command else fill_args(cmd)
 
     execute_bash(config.get_command_path(cmd), filled_args)
 
