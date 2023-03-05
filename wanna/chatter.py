@@ -34,12 +34,11 @@ cp -r target/* myNewDirectory
 LIST_UP_FILENAMES_PROMPT = """
 If you were to name this bashscript, what file name would you give it?
 Be sure to output 4 candidates
-Please follow the example without the .sh and answer with a list of four choices in json format. (ex.["ccc", "bbb", "ccc", "ddd"])
+Please follow the example name without the ".sh" and answer with a list of four choices in json format. (ex.["good_one", "something_special", "count_records", "delete_files"])
 """
 
 SUMMARY_PROMPT = """
 Please write a description of this bash script in 100 length of string or less in the same language of the questioner.
-The subject line "This bash script is ~" is not necessary. Please write only a simple description.
 """
 
 
@@ -111,6 +110,8 @@ class BashAgent():
             return self.question[0]
 
         self.add_system_message(SUMMARY_PROMPT)
+        query = "\n-".join(self.question)
+        self.add_system_message(query)
         message = self.chat()
         return message
 

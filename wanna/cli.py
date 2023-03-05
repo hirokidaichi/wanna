@@ -77,7 +77,9 @@ def try_save(agent):
         "I thought of the following names. Which one do you like?",
         choices=names,
     ).ask()
-    config.save_script(selected_name, agent.code, agent.question_summary())
+    summary = agent.question_summary()
+    click.echo(f"Saved as {selected_name}: Description:{summary}")
+    config.save_script(selected_name, agent.code, summary)
 
 
 def conversation_cycle(agent, is_display_comment=True):
