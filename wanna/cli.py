@@ -51,6 +51,7 @@ def create_tmp_file(code):
 class NextAction(Enum):
     DO = "Do"
     SAVE = "Save"
+    ADD_PROMPT = "追加の指示を出す"
     ANOTHER_QUESTION = "Another Question"
     EXIT = "Exit"
 
@@ -108,7 +109,6 @@ def after_comment(question, comment):
 
 
 def what_wanna_do(default_question=""):
-    # 　やりたいことを聞く
     question = questionary.text(
         'What do you want to do ?', default=default_question).ask()
 
@@ -136,7 +136,7 @@ def fill_command(command):
     if config.exists(got_command):
         return got_command
     else:
-        fill_command(got_command)
+        sys.exit(0)
 
 
 def fill_args(cmd, args):
@@ -170,7 +170,7 @@ def think(question=None):
 @cmd.command()
 @click.option('--command', is_flag=True)
 def list(command):
-    """list up all commands"""
+    """List up all commands"""
 
     target_list = config.commands() if command else config.ideas()
 

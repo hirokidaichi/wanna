@@ -3,6 +3,7 @@ import openai
 import json
 import re
 from glom import glom
+from . import system
 openai.api_key = os.environ["OPENAI_API_KEY"]
 
 
@@ -42,10 +43,12 @@ def talk_to_openai(messages):
 def guess_bash_command(question, error_message=None):
     messages = [
         {"role": "system", "content": BASH_SCRIPT_PROMPT},
+        {"role": "system", "content": "The operating environment for bash is as follows:"+system.info()},
         {"role": "user", "content": question}
     ]
     if error_message:
-        messages.append({"role": "system", "content": "When I ran the bash script, I got the following error message：\n"+error_message})
+        messages.append(
+            {"role": "system", "content": "When I ran the bash script, I got the following error message：\n"+error_message})
 
     return talk_to_openai(messages)
 
