@@ -3,9 +3,12 @@ import openai
 import json
 import re
 import sys
+from subprocess_tee import run
 from glom import glom
 from . import system
 from . import codedisplay
+
+
 if "OPENAI_API_KEY" not in os.environ:
     print("ERROR: OPENAI_API_KEY environment variable not found.")
     sys.exit(1)
@@ -60,6 +63,15 @@ def parse_json(text):
     return json.loads(extract_json_block(text))
 
 
+def extract_head_tail(text):
+    if len(text) <= 200:
+        return text
+    else:
+        head = text[:100]
+        tail = text[-100:]
+        return head + "..." + tail
+
+
 class BashAgent():
     PRESET_MESSAGES = [
         {"role": "system", "content": BASH_SCRIPT_PROMPT},
@@ -82,6 +94,15 @@ class BashAgent():
 
     def add_assistant_message(self, message):
         self.messages.append({"role": "assistant", "content": message})
+
+    def report_result(self, result):
+        self.add_system_message(f"""
+        returncode : {result.returncode}
+        stdout :
+        {extract_head_tail(result.stdout)}
+        stderr : 
+        {extract_head_tail(result.stderr)}
+        """)
 
     def chat(self):
         response = openai.ChatCompletion.create(

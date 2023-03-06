@@ -7,7 +7,7 @@ import re
 import sys
 import questionary
 import click
-from . import codedisplay
+import subprocess_tee
 from . import chatter
 from . import config
 
@@ -38,8 +38,12 @@ def retry_if_fail(func):
     return wrapper
 
 
+def execute_bash_tee(filename, args=[]):
+    return subprocess_tee.run(["bash", filename] + args)
+
+
 def execute_bash(filename, args=[]):
-    subprocess.run(["bash", filename] + args)
+    return subprocess.run(["bash", filename] + args)
 
 
 def create_tmp_file(code):
@@ -103,7 +107,15 @@ def conversation_cycle(agent, is_display_comment=True):
     if next_action == NextAction.DO:
         tmp = create_tmp_file(code)
         args = require_args_if_need(code)
-        execute_bash(tmp, args)
+        result = execute_bash_tee(tmp, args)
+        agent.report_result(result)
+        if result.returncode != 0 or len(result.stderr) > 0:
+            think_again = questionary.confirm(
+                "Something doesn't seem to be going right. \nCan I try to fix the code?", default=False).ask()
+            if think_again:
+                agent.think_script("")
+                return conversation_cycle(agent, is_display_comment=True)
+
         return conversation_cycle(agent, is_display_comment=False)
 
     elif next_action == NextAction.SAVE:
@@ -196,7 +208,7 @@ def list(command):
 @click.argument("args", nargs=-1)
 def remove(command, args):
     """Remove selected command"""
-    print(command)
+    click.echo("Removed:" + command)
     cmd = fill_command(command)
     config.remove(cmd)
 
