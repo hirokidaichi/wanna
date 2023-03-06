@@ -46,6 +46,7 @@ Condition 1: Must be less than 100 characters
 Condition 2: Output should be in the same language as the user's input language.
 Condition 3: The description of the operation should be simple.
 Condition 4: It is obvious that it is a bash script, so it is not mentioned.
+The instructions so far are as follows:
 """
 
 
@@ -135,7 +136,7 @@ class BashAgent():
             return self.question[0]
 
         self.add_system_message(SUMMARY_PROMPT)
-        self.add_system_message("/".join(self.question))
+        self.add_system_message("\n".join(self.question))
         message = self.chat()
         return message
 
