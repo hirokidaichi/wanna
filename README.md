@@ -21,7 +21,7 @@ the AI assistant will automatically generate the following bash script:
 
 ```bash
 #! /usr/bin/env bash
-find . -name "*.py" | xargs wc -l | awk '{total += $1} END{print total}'
+find . -name "*.py" -exec cat {} + | wc -l
 ```
 You just look at it and decide to run it or not.
 
