@@ -8,6 +8,7 @@ import sys
 import questionary
 import click
 import subprocess_tee
+import click_spinner
 from . import chatter
 from . import config
 
@@ -23,6 +24,11 @@ def require_args_if_need(code):
         args_string = questionary.text(f"Please input arguments:").ask()
         return split_by_whitespace(args_string)
     return []
+
+
+def think_with_spinner(agent, message):
+    with click_spinner.spinner():
+        agent.think_script(message)
 
 
 def retry_if_fail(func):
@@ -113,7 +119,8 @@ def conversation_cycle(agent, is_display_comment=True):
             think_again = questionary.confirm(
                 "Something doesn't seem to be going right. \nCan I try to fix the code?", default=False).ask()
             if think_again:
-                agent.think_script("")
+                think_with_spinner(agent, "")
+
                 return conversation_cycle(agent, is_display_comment=True)
 
         return conversation_cycle(agent, is_display_comment=False)
@@ -123,7 +130,7 @@ def conversation_cycle(agent, is_display_comment=True):
 
     elif next_action == NextAction.ADDITONAL_REQUEST:
         text = questionary.text("What additional requests do you have?").ask()
-        agent.think_script(text)
+        think_with_spinner(agent, text)
         return conversation_cycle(agent)
 
     elif next_action == NextAction.ANOTHER_QUESTION:
@@ -141,7 +148,8 @@ def what_wanna_do(default_question=""):
         click.echo("please tell me what you wanna do", err=True)
         sys.exit(0)
     agent = chatter.BashAgent()
-    agent.think_script(question)
+
+    think_with_spinner(agent, question)
 
     conversation_cycle(agent)
 

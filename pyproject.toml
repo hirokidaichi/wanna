@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "wanna"
-version = "0.1.7"
+version = "0.1.8"
 description = "Shell command launcher with natural language"
 license = "MIT"
 readme = "README.md"
@@ -17,6 +17,7 @@ pygments = "^2.14.0"
 toml = "^0.10.2"
 glom = "^23.1.1"
 subprocess-tee = "^0.4.1"
+click-spinner = "^0.1.10"
 
 
 [build-system]

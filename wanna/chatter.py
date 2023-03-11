@@ -21,10 +21,12 @@ If someone asks you to perform a task, your job is to come up with a series of b
 Do not use anything but bash scripts.Take up to two arguments if necessary.
 Use the following format and try to explain your reasoning step by step:.
 
+
+<Example>
 Q: "Copy files in a directory named "target" to a new directory at the same level as target named "myNewDirectory"."
 
 The following actions are required
-- Create a nepow directory
+- Create a new directory
 - Copy files from the first directory to the second
 ```bash
 #!/usr/bin/env bash
@@ -43,9 +45,13 @@ Please follow the example name without the ".sh" and answer with a list of four 
 SUMMARY_PROMPT = """
 Please write a description of this bash script.
 Condition 1: Must be less than 100 characters
-Condition 2: Output should be in the same language as the user's input language.
+Condition 2: Output should be in the same language as the USER'S INPUT LANGUAGE.
 Condition 3: The description of the operation should be simple.
-Condition 4: It is obvious that it is a bash script, so it is not mentioned.
+Condition 4: The description should be in the form of a sentence.
+
+Example:
+Prints "Hello, world!" twice to the terminal.
+
 The instructions so far are as follows:
 """
 
