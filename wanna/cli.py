@@ -7,7 +7,7 @@ import re
 import sys
 import questionary
 import click
-import subprocess_tee
+from subprocess_tee import run
 import click_spinner
 from . import chatter
 from . import config
@@ -45,7 +45,7 @@ def retry_if_fail(func):
 
 
 def execute_bash_tee(filename, args=[]):
-    return subprocess_tee.run(["bash", filename] + args)
+    return run(["bash", filename] + args)
 
 
 def execute_bash(filename, args=[]):
@@ -219,6 +219,24 @@ def remove(command, args):
     click.echo("Removed:" + command)
     cmd = fill_command(command)
     config.remove(cmd)
+
+
+def chat_loop(agent):
+    command = questionary.text("You").ask()
+    if command == "exit":
+        sys.exit(0)
+    agent.add_user_message(command)
+    with click_spinner.spinner():
+        message = agent.chat()
+        click.echo("Bashbot: " + message)
+    chat_loop(agent)
+
+
+@cmd.command()
+def chat():
+    """Chat with bashbot"""
+    agent = chatter.BaseAgent()
+    chat_loop(agent)
 
 
 def main():

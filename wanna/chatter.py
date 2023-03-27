@@ -15,11 +15,14 @@ if "OPENAI_API_KEY" not in os.environ:
 
 openai.api_key = os.environ["OPENAI_API_KEY"]
 
+GPT_MODEL = os.environ["WANNA_GPT_MODEL"] if "WANNA_GPT_MODEL" in os.environ else "gpt-3.5-turbo"
 
 BASH_SCRIPT_PROMPT = """
-If someone asks you to perform a task, your job is to come up with a series of bash scripts that will perform that task.
+If someone asks you to perform a task, 
+your job is to come up with a series of bash scripts that will perform that task.
 Do not use anything but bash scripts.Take up to two arguments if necessary.
-Use the following format and try to explain your reasoning step by step:.
+Make the script as compatible as possible.
+Use the following format and try to explain your reasoning step by step:
 
 
 <Example>
@@ -43,16 +46,11 @@ Please follow the example name without the ".sh" and answer with a list of four 
 """
 
 SUMMARY_PROMPT = """
-Please write a description of this bash script.
-Condition 1: Must be less than 100 characters
-Condition 2: Output should be in the same language as the USER'S INPUT LANGUAGE.
+Please write 1 line description of this bash script.
+Condition 1: Output should be in the same language as the USER'S INPUT LANGUAGE.
+Condition 2: Must be less than 150 characters.
 Condition 3: The description of the operation should be simple.
 Condition 4: The description should be in the form of a sentence.
-
-Example:
-Prints "Hello, world!" twice to the terminal.
-
-The instructions so far are as follows:
 """
 
 
@@ -79,19 +77,11 @@ def extract_head_tail(text):
         return head + "..." + tail
 
 
-class BashAgent():
-    PRESET_MESSAGES = [
-        {"role": "system", "content": BASH_SCRIPT_PROMPT},
-        {"role": "system", "content": "The operating environment for bash is as follows:"+system.info()},
-    ]
-
-    def __init__(self, temperature=0.1):
-        self.temperature = temperature
-        self.messages = self.PRESET_MESSAGES
-        self.display_comment = ""
-        self.question = []
-        self.names = []
-        self.code = ""
+# BaseAgentの作成
+class BaseAgent():
+    def __init__(self):
+        self.messages = []
+        self.temperature = 0.1
 
     def add_user_message(self, message):
         self.messages.append({"role": "user", "content": message})
@@ -102,6 +92,32 @@ class BashAgent():
     def add_assistant_message(self, message):
         self.messages.append({"role": "assistant", "content": message})
 
+    def chat(self):
+        response = openai.ChatCompletion.create(
+            model=GPT_MODEL,
+            messages=self.messages,
+            temperature=self.temperature,
+        )
+        message = glom(response, "choices.0.message.content", default=None)
+        self.add_assistant_message(message)
+        return message
+
+
+class BashAgent(BaseAgent):
+    PRESET_MESSAGES = [
+        {"role": "system", "content": BASH_SCRIPT_PROMPT},
+        {"role": "system", "content": "The operating environment for bash is as follows:"+system.info()},
+    ]
+
+    def __init__(self, temperature=0.1):
+        super().__init__()
+        self.temperature = temperature
+        self.messages = self.PRESET_MESSAGES
+        self.display_comment = ""
+        self.question = []
+        self.names = []
+        self.code = ""
+
     def report_result(self, result):
         self.add_system_message(f"""
         returncode : {result.returncode}
@@ -110,16 +126,6 @@ class BashAgent():
         stderr : 
         {extract_head_tail(result.stderr)}
         """)
-
-    def chat(self):
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=self.messages,
-            temperature=self.temperature,
-        )
-        message = glom(response, "choices.0.message.content", default=None)
-        self.add_assistant_message(message)
-        return message
 
     def think_script(self, question):
         self.question.append(question)
@@ -136,13 +142,7 @@ class BashAgent():
         return self.names
 
     def question_summary(self):
-        if len(self.question) == 0:
-            return ""
-        if len(self.question) == 1:
-            return self.question[0]
-
         self.add_system_message(SUMMARY_PROMPT)
-        self.add_system_message("\n".join(self.question))
         message = self.chat()
         return message
 
