@@ -12,10 +12,11 @@ from . import codedisplay
 if "OPENAI_API_KEY" not in os.environ:
     print("ERROR: OPENAI_API_KEY environment variable not found.")
     sys.exit(1)
+    
 
 openai.api_key = os.environ["OPENAI_API_KEY"]
 
-GPT_MODEL = os.environ["WANNA_GPT_MODEL"] if "WANNA_GPT_MODEL" in os.environ else "gpt-3.5-turbo"
+gpt_model = ""
 
 BASH_SCRIPT_PROMPT = """
 If someone asks you to perform a task, 
@@ -94,7 +95,7 @@ class BaseAgent():
 
     def chat(self):
         response = openai.ChatCompletion.create(
-            model=GPT_MODEL,
+            model=gpt_model,
             messages=self.messages,
             temperature=self.temperature,
         )
@@ -120,12 +121,18 @@ class BashAgent(BaseAgent):
 
     def report_result(self, result):
         self.add_system_message(f"""
+        The execution result of your proposed script is as follows Based on the results, introspect.
+        If the result is appropriate for user's instructions, say a single word: "DONE". If not, suggest the script again.
+
+        # RESULT
         returncode : {result.returncode}
         stdout :
         {extract_head_tail(result.stdout)}
         stderr : 
         {extract_head_tail(result.stderr)}
+    
         """)
+        return self.chat()
 
     def think_script(self, question):
         self.question.append(question)

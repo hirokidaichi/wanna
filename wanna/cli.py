@@ -114,7 +114,8 @@ def conversation_cycle(agent, is_display_comment=True):
         tmp = create_tmp_file(code)
         args = require_args_if_need(code)
         result = execute_bash_tee(tmp, args)
-        agent.report_result(result)
+        introspect = agent.report_result(result)
+        click.echo(introspect)
         if result.returncode != 0 or len(result.stderr) > 0:
             think_again = questionary.confirm(
                 "Something doesn't seem to be going right. \nCan I try to fix the code?", default=False).ask()
@@ -192,7 +193,9 @@ def do(command=None, args=None):
 
 @cmd.command()
 @click.argument('question', required=False)
-def think(question=None):
+@click.option("--model", required=False, default="gpt-3.5-turbo")
+def think(model, question=None):
+    chatter.gpt_model = model
     """Generate a bash script that answers the incoming request"""
     if (question is None):
         what_wanna_do()
@@ -233,8 +236,10 @@ def chat_loop(agent):
 
 
 @cmd.command()
-def chat():
+@click.option("--model", required=False, default="gpt-3.5-turbo")
+def chat(model):
     """Chat with bashbot"""
+    chatter.gpt_model = model
     agent = chatter.BaseAgent()
     chat_loop(agent)
 
