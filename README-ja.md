@@ -21,13 +21,14 @@ $ wanna think このディレクトリの配下にあるすべての.pyファイ
 
 ```bash
 #!/usr/bin/env bash
-find . -name "*.py" | xargs wc -l | awk '{total += $1} END{print total}'
+find . -name "*.py" -exec cat {} + | wc -l
 ```
 あなたはただ、それをみて、実行するかしないかを決めれば良いだけです。
 ```
 ? What's next? (Use arrow keys)
  » Do
    Save
+   Additonal Request
    Another Question
    Exit
 ```
