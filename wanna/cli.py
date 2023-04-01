@@ -136,15 +136,13 @@ def conversation_cycle(agent, is_display_comment=True):
         tmp = create_tmp_file(code)
         args = require_args_if_need(code)
         result = execute_bash_tee(tmp, args)
-        (rethink, reflection) = agent.rethink(result)
-        if rethink == "RETHINK":
+        (has_fix, message) = agent.rethink(result)
+        if has_fix:
             click.secho("WANNA Reflection (RETHINK):", **WANNA_STYLE)
-            click.secho(reflection, fg="red")
-            agent.think("Fix Code")
             return conversation_cycle(agent, is_display_comment=True)
         else:
             click.secho("WANNA Reflection (SUCCESS):", **WANNA_STYLE)
-            click.secho(f"{reflection}")
+            click.echo(message)
         return conversation_cycle(agent, is_display_comment=False)
 
     elif next_action == NextAction.SAVE:

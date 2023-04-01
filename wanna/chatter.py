@@ -34,11 +34,11 @@ def parse_json(text):
 
 
 def extract_head_tail(text):
-    if len(text) <= 200:
+    if len(text) <= 100:
         return text
     else:
-        head = text[:100]
-        tail = text[-100:]
+        head = text[:50]
+        tail = text[-50:]
         return head + "..." + tail
 
 
@@ -46,7 +46,7 @@ def extract_head_tail(text):
 class BaseAgent():
     def __init__(self):
         self.messages = []
-        self.temperature = 0.1
+        self.temperature = 0.01
 
     def add_user_message(self, message):
         self.messages.append({"role": "user", "content": message})
@@ -78,7 +78,7 @@ def guess_language(question):
     agent.add_system_message(
         f"""
         guess the language of following text:
-        (e.g ja,en,fr,es,zh) 
+        (e.g ja,en,fr,es,zh)
 
         <Example>
         input : こんにちは
@@ -98,7 +98,7 @@ def guess_language(question):
 
 class BashAgent(BaseAgent):
 
-    def __init__(self, temperature=0.1):
+    def __init__(self, temperature=0.01):
         super().__init__()
         self.temperature = temperature
         self.language = None
@@ -140,23 +140,27 @@ class BashAgent(BaseAgent):
         return """
         If you were to name this bashscript, what file name would you give it?
         Be sure to output 4 candidates
-        Please follow the example name without the ".sh" and answer with a list of four choices in json format. (ex.["good_one", "something_special", "count_records", "delete_files"])
+        Please follow the example name without the ".sh" and answer with a list of four choices in json format.
+
+        ```json
+        {
+            "filename_candidates": [
+                "top_mem_processes",
+                "high_mem_procs",
+                "mem_usage_top5",
+                "processes_by_mem"
+            ] // should be 4 candicates
+        }
+        ```
         """
 
     def reflection_prompt(self):
         return f"""
-        The output should be a markdown code snippet formatted in the following schema:
-
-        ```json
-        {{
-            "result": enum,  // "SUCCESS" | "RETHINK" If the execution results are satisfactory, SUCCESS If improvements are needed, RETHINK
-            "reflection": string  // Your thoughts after going through the results of the execution.{self.user_language_prompt()}
-        }}
-        ```
+        実行結果を見て問題があれば、コードの修正を提案せよ。問題なく動作していれば、問題なしと回答せよ。
         """
 
     def summary_prompt(self):
-        return f""" 
+        return f"""
         Please write 1 line description of this bash script.
         Condition : Must be less than 150 characters.
         Condition : The description of the operation should be simple.
@@ -164,7 +168,11 @@ class BashAgent(BaseAgent):
         {self.user_language_prompt()}
         """
 
-    def rethink(self, result):
+    def rethink(self, result, retry=0):
+        if retry >= 3:
+            print("Overlimit retry count")
+            sys.exit(1)
+
         self.add_system_message(f"""
         The execution result of your proposed script is as follows Based on the results:
 
@@ -175,20 +183,25 @@ class BashAgent(BaseAgent):
         stderr : 
         {extract_head_tail(result.stderr)}
 
-        {self.reflection_prompt()}
+        If there are any problems with the execution results, suggest modifications to the code. If it works fine, reply that there is no problem.
         {self.user_language_prompt()}
         """)
         message = self.chat()
-        json = parse_json(message)
-        return (json["result"], json["reflection"])
+        code = codedisplay.extract_code_block(message)
+        if code is not None:
+            self.display_comment = codedisplay.highlight_code_block(message)
+            self.code = codedisplay.extract_code_block(message)
+            return (True, None)
+        else:
+            return (False, message)
 
     def think(self, question):
         if self.language is None:
             self.language = guess_language(question)
+            self.add_system_message(
+                "The operating environment for bash is as follows:"+system.info())
+            self.add_system_message(self.bash_script_prompt())
 
-        self.add_system_message(
-            "The operating environment for bash is as follows:"+system.info())
-        self.add_system_message(self.bash_script_prompt())
         self.question.append(question)
         self.add_user_message(question)
         message = self.chat()
@@ -196,10 +209,24 @@ class BashAgent(BaseAgent):
         self.code = codedisplay.extract_code_block(message)
         return message
 
-    def propose_names(self):
+    def propose_names(self, retry=0):
+        if retry >= 3:
+            print("Overlimit retry count")
+            sys.exit(1)
         self.add_system_message(self.listup_filename_prompt())
         message = self.chat()
-        self.names = parse_json(message)
+        try:
+            json = parse_json(message)
+            self.names = json["filename_candidates"]
+            if len(self.names) != 4:
+                print("json length error")
+                raise Exception("json error")
+        except:
+            self.messages = self.messages[:-2]
+            print(f"retry{retry}")
+            print(f"{message}")
+            return self.propose_names(retry + 1)
+
         return self.names
 
     def propose_summary(self):
