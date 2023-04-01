@@ -26,24 +26,6 @@ def require_args_if_need(code):
     return []
 
 
-def think_with_spinner(agent, message):
-    with click_spinner.spinner():
-        agent.think_script(message)
-
-
-def retry_if_fail(func):
-    def wrapper(*args, **kwargs):
-        while True:
-            try:
-                return func(*args, **kwargs)
-            except:
-                if questionary.confirm("Oops, something went wrong. Retry?").ask():
-                    pass
-                else:
-                    sys.exit(0)
-    return wrapper
-
-
 def execute_bash_tee(filename, args=[]):
     return run(["bash", filename] + args)
 
@@ -58,17 +40,56 @@ def create_tmp_file(code):
         return tmp_file.name
 
 
+def split_by_whitespace(string):
+    regex = re.compile(r'\s+')
+    return regex.split(string)
+
+
+class InteractiveAgent():
+    """Spinnerなどのインタラクションや再実行などを中継するクラス"""
+
+    def __init__(self, agent):
+        self.agent = agent
+
+    # ユーザーの質問に対する回答を取得するメソッド
+    def think(self, question):
+        click.secho("...WANNA is thinking bash script:",  fg="blue")
+        with click_spinner.spinner():
+            return self.agent.think(question)
+
+    # 回答が不正解だった場合に再度回答を求めるメソッド
+    def rethink(self, result):
+        click.secho("...WANNA is thinking about executed result",  fg="blue")
+        with click_spinner.spinner():
+            return self.agent.rethink(result)
+
+    # 変数名の候補を提案するメソッド
+    def propose_names(self):
+        click.secho("...WANNA is thinking about script names",  fg="blue")
+        with click_spinner.spinner():
+            return self.agent.propose_names()
+
+    # コードの概要文を提案するメソッド
+    def propose_summary(self):
+        click.secho("...WANNA is thinking about script description",  fg="blue")
+        with click_spinner.spinner():
+            return self.agent.propose_summary()
+
+    # 生成されたコードを取得するメソッド
+    def get_code(self):
+        return self.agent.code
+
+    # コメントを取得するメソッド
+    def get_comment(self):
+        return self.agent.display_comment
+
+
 class NextAction(Enum):
     DO = "Do"
     SAVE = "Save"
     ADDITONAL_REQUEST = "Additonal Request"
     ANOTHER_QUESTION = "Another Question"
     EXIT = "Exit"
-
-
-def split_by_whitespace(string):
-    regex = re.compile(r'\s+')
-    return regex.split(string)
 
 
 def call_whats_next():
@@ -80,64 +101,68 @@ def call_whats_next():
 
 
 def try_save(agent):
-    retry_think_script_name = retry_if_fail(lambda: agent.think_script_names())
+    names = agent.propose_names()
 
-    names = retry_think_script_name()
     selected_name = questionary.select(
         "I thought of the following names. Which one do you like?",
         choices=names,
     ).ask()
-    summary = agent.question_summary()
+    summary = agent.propose_summary()
     click.echo(f"Saved as {selected_name}: Description:{summary}")
-    config.save_script(selected_name, agent.code, summary)
+    config.save_script(selected_name, agent.get_code(), summary)
 
 
 def conversation_cycle(agent, is_display_comment=True):
-    display_comment = agent.display_comment
-    code = agent.code
+    display_comment = agent.get_comment()
+    code = agent.get_code()
+
+    WANNA_STYLE = {"bold": True, "fg": "blue", "reverse": False}
 
     if is_display_comment:
         if code is None:
-            click.echo(click.style("AI Answer:",
-                                   bold=True, underline=True, reverse=True))
+            click.secho("AI Answer:", bold=True, underline=True, reverse=True)
             click.echo(display_comment)
-            click.echo(click.style("Sorry, I could not generate the proper code from your comment.",
-                                   fg="red", bold=True))
+            click.secho(
+                "Sorry, I could not generate the proper code from your comment.", fg="red", bold=True)
             sys.exit(0)
 
-        click.echo(click.style("AI Answer:", bold=True, reverse=True))
+        click.secho("WANNA:", **WANNA_STYLE)
         click.echo(display_comment)
 
     next_action = call_whats_next()
 
     if next_action == NextAction.DO:
+        """実行する場合：実行結果を元に内省して間違いがあれば新しいコードを提案する"""
         tmp = create_tmp_file(code)
         args = require_args_if_need(code)
         result = execute_bash_tee(tmp, args)
-        introspect = agent.report_result(result)
-        click.echo(introspect)
-        if result.returncode != 0 or len(result.stderr) > 0:
-            think_again = questionary.confirm(
-                "Something doesn't seem to be going right. \nCan I try to fix the code?", default=False).ask()
-            if think_again:
-                think_with_spinner(agent, "")
-
-                return conversation_cycle(agent, is_display_comment=True)
-
+        (rethink, reflection) = agent.rethink(result)
+        if rethink == "RETHINK":
+            click.secho("WANNA Reflection (RETHINK):", **WANNA_STYLE)
+            click.secho(reflection, fg="red")
+            agent.think("Fix Code")
+            return conversation_cycle(agent, is_display_comment=True)
+        else:
+            click.secho("WANNA Reflection (SUCCESS):", **WANNA_STYLE)
+            click.secho(f"{reflection}")
         return conversation_cycle(agent, is_display_comment=False)
 
     elif next_action == NextAction.SAVE:
+        """保存する場合:script名を提案して、概要文を生成して保存する"""
         return try_save(agent)
 
     elif next_action == NextAction.ADDITONAL_REQUEST:
+        """新しい指示を追加する場合:指示を元にコードを提案する"""
         text = questionary.text("What additional requests do you have?").ask()
-        think_with_spinner(agent, text)
+        agent.think(text)
         return conversation_cycle(agent)
 
     elif next_action == NextAction.ANOTHER_QUESTION:
-        return what_wanna_do(agent.question_summary())
+        """新しい指示に切り替える場合：これまでのサマリーをデフォルトに再度指示を仰ぐ"""
+        return what_wanna_do(agent.propose_summary())
 
     elif next_action == NextAction.EXIT:
+        """辞める場合:exitする"""
         sys.exit(0)
 
 
@@ -146,16 +171,14 @@ def what_wanna_do(default_question=""):
         'What do you want to do ?', default=default_question).ask()
 
     if len(question.strip()) == 0:
-        click.echo("please tell me what you wanna do", err=True)
+        click.secho("Please tell me what you wanna do", fg="red")
         sys.exit(0)
-    agent = chatter.BashAgent()
-
-    think_with_spinner(agent, question)
-
+    agent = InteractiveAgent(chatter.BashAgent())
+    agent.think(question)
     conversation_cycle(agent)
 
 
-@click.group()
+@ click.group()
 def cmd():
     """Shell command launcher with natural language"""
     pass
@@ -179,9 +202,9 @@ def fill_args(cmd):
     return require_args_if_need(config.get_code(cmd))
 
 
-@cmd.command()
-@click.argument('command', required=False)
-@click.argument("args", nargs=-1)
+@ cmd.command()
+@ click.argument('command', required=False)
+@ click.argument("args", nargs=-1)
 def do(command=None, args=None):
     """Execute a command"""
     cmd = fill_command(command)
@@ -191,9 +214,9 @@ def do(command=None, args=None):
     execute_bash(config.get_command_path(cmd), filled_args)
 
 
-@cmd.command()
-@click.argument('question', required=False)
-@click.option("--model", required=False, default="gpt-3.5-turbo")
+@ cmd.command()
+@ click.argument('question', required=False)
+@ click.option("--model", required=False, default="gpt-3.5-turbo")
 def think(model, question=None):
     chatter.gpt_model = model
     """Generate a bash script that answers the incoming request"""
@@ -203,8 +226,8 @@ def think(model, question=None):
         what_wanna_do(question)
 
 
-@cmd.command()
-@click.option('--command', is_flag=True)
+@ cmd.command()
+@ click.option('--command', is_flag=True)
 def list(command):
     """List up all commands"""
 
@@ -214,9 +237,9 @@ def list(command):
         click.echo(value)
 
 
-@cmd.command()
-@click.argument('command', required=False)
-@click.argument("args", nargs=-1)
+@ cmd.command()
+@ click.argument('command', required=False)
+@ click.argument("args", nargs=-1)
 def remove(command, args):
     """Remove selected command"""
     click.echo("Removed:" + command)
@@ -235,8 +258,8 @@ def chat_loop(agent):
     chat_loop(agent)
 
 
-@cmd.command()
-@click.option("--model", required=False, default="gpt-3.5-turbo")
+@ cmd.command()
+@ click.option("--model", required=False, default="gpt-3.5-turbo")
 def chat(model):
     """Chat with bashbot"""
     chatter.gpt_model = model

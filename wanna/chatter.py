@@ -12,47 +12,11 @@ from . import codedisplay
 if "OPENAI_API_KEY" not in os.environ:
     print("ERROR: OPENAI_API_KEY environment variable not found.")
     sys.exit(1)
-    
+
 
 openai.api_key = os.environ["OPENAI_API_KEY"]
 
 gpt_model = ""
-
-BASH_SCRIPT_PROMPT = """
-If someone asks you to perform a task, 
-your job is to come up with a series of bash scripts that will perform that task.
-Do not use anything but bash scripts.Take up to two arguments if necessary.
-Make the script as compatible as possible.
-Use the following format and try to explain your reasoning step by step:
-
-
-<Example>
-Q: "Copy files in a directory named "target" to a new directory at the same level as target named "myNewDirectory"."
-
-The following actions are required
-- Create a new directory
-- Copy files from the first directory to the second
-```bash
-#!/usr/bin/env bash
-mkdir myNewDirectory
-cp -r target/* myNewDirectory
-````
-
-"""
-
-LIST_UP_FILENAMES_PROMPT = """
-If you were to name this bashscript, what file name would you give it?
-Be sure to output 4 candidates
-Please follow the example name without the ".sh" and answer with a list of four choices in json format. (ex.["good_one", "something_special", "count_records", "delete_files"])
-"""
-
-SUMMARY_PROMPT = """
-Please write 1 line description of this bash script.
-Condition 1: Output should be in the same language as the USER'S INPUT LANGUAGE.
-Condition 2: Must be less than 150 characters.
-Condition 3: The description of the operation should be simple.
-Condition 4: The description should be in the form of a sentence.
-"""
 
 
 def extract_json_block(text):
@@ -104,25 +68,105 @@ class BaseAgent():
         return message
 
 
+def remove_non_alpha(input_string):
+    return re.sub(r'[^a-zA-Z]', '', input_string)
+
+
+def guess_language(question):
+    agent = BaseAgent()
+
+    agent.add_system_message(
+        f"""
+        guess the language of following text:
+        (e.g ja,en,fr,es,zh) 
+
+        <Example>
+        input : こんにちは
+        output: ja
+
+        input : hello
+        output : en
+        </Example>
+
+        input: {question}
+        output:
+        """
+    )
+    message = agent.chat()
+    return remove_non_alpha(message)
+
+
 class BashAgent(BaseAgent):
-    PRESET_MESSAGES = [
-        {"role": "system", "content": BASH_SCRIPT_PROMPT},
-        {"role": "system", "content": "The operating environment for bash is as follows:"+system.info()},
-    ]
 
     def __init__(self, temperature=0.1):
         super().__init__()
         self.temperature = temperature
-        self.messages = self.PRESET_MESSAGES
+        self.language = None
+        self.messages = []
         self.display_comment = ""
         self.question = []
         self.names = []
         self.code = ""
 
-    def report_result(self, result):
+    def user_language_prompt(self):
+        return f"Output in the following language:{self.language}"
+
+    def bash_script_prompt(self):
+        return f"""
+        If someone asks you to perform a task,
+        your job is to come up with a series of bash scripts that will perform that task.
+        Do not use anything but bash scripts.Take up to two arguments if necessary.
+        Make the script as compatible as possible.
+        Use the following format and try to explain your reasoning step by step:
+
+
+        <Example>
+        Q: "Copy files in a directory named "target" to a new directory at the same level as target named "myNewDirectory"."
+
+        The following actions are required
+        - Create a new directory
+        - Copy files from the first directory to the second
+        ```bash
+        #!/usr/bin/env bash
+        mkdir myNewDirectory
+        cp -r target/* myNewDirectory
+        ````
+        </Example>
+
+        {self.user_language_prompt}
+        """
+
+    def listup_filename_prompt(self):
+        return """
+        If you were to name this bashscript, what file name would you give it?
+        Be sure to output 4 candidates
+        Please follow the example name without the ".sh" and answer with a list of four choices in json format. (ex.["good_one", "something_special", "count_records", "delete_files"])
+        """
+
+    def reflection_prompt(self):
+        return f"""
+        The output should be a markdown code snippet formatted in the following schema:
+
+        ```json
+        {{
+            "result": enum,  // "SUCCESS" | "RETHINK" If the execution results are satisfactory, SUCCESS If improvements are needed, RETHINK
+            "reflection": string  // Your thoughts after going through the results of the execution.{self.user_language_prompt()}
+        }}
+        ```
+        """
+
+    def summary_prompt(self):
+        return f""" 
+        Please write 1 line description of this bash script.
+        Condition : Must be less than 150 characters.
+        Condition : The description of the operation should be simple.
+        Condition : The description should be in the form of a sentence.
+        {self.user_language_prompt()}
+        """
+
+    def rethink(self, result):
         self.add_system_message(f"""
-        The execution result of your proposed script is as follows Based on the results, introspect.
-        If the result is appropriate for user's instructions, say a single word: "DONE". If not, suggest the script again.
+        The execution result of your proposed script is as follows Based on the results:
 
         # RESULT
         returncode : {result.returncode}
@@ -130,11 +174,21 @@ class BashAgent(BaseAgent):
         {extract_head_tail(result.stdout)}
         stderr : 
         {extract_head_tail(result.stderr)}
-    
-        """)
-        return self.chat()
 
-    def think_script(self, question):
+        {self.reflection_prompt()}
+        {self.user_language_prompt()}
+        """)
+        message = self.chat()
+        json = parse_json(message)
+        return (json["result"], json["reflection"])
+
+    def think(self, question):
+        if self.language is None:
+            self.language = guess_language(question)
+
+        self.add_system_message(
+            "The operating environment for bash is as follows:"+system.info())
+        self.add_system_message(self.bash_script_prompt())
         self.question.append(question)
         self.add_user_message(question)
         message = self.chat()
@@ -142,16 +196,16 @@ class BashAgent(BaseAgent):
         self.code = codedisplay.extract_code_block(message)
         return message
 
-    def think_script_names(self):
-        self.add_system_message(LIST_UP_FILENAMES_PROMPT)
+    def propose_names(self):
+        self.add_system_message(self.listup_filename_prompt())
         message = self.chat()
         self.names = parse_json(message)
         return self.names
 
-    def question_summary(self):
-        self.add_system_message(SUMMARY_PROMPT)
+    def propose_summary(self):
+        self.add_system_message(self.summary_prompt())
         message = self.chat()
         return message
 
     def reset(self):
-        self.messages = self.PRESET_MESSAGES
+        self.__init__()
