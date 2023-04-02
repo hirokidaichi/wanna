@@ -133,7 +133,7 @@ class BashAgent(BaseAgent):
         ````
         </Example>
 
-        {self.user_language_prompt}
+        {self.user_language_prompt()}
         """
 
     def listup_filename_prompt(self):
