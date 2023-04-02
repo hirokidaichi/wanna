@@ -154,11 +154,6 @@ class BashAgent(BaseAgent):
         ```
         """
 
-    def reflection_prompt(self):
-        return f"""
-        実行結果を見て問題があれば、コードの修正を提案せよ。問題なく動作していれば、問題なしと回答せよ。
-        """
-
     def summary_prompt(self):
         return f"""
         Please write 1 line description of this bash script.
